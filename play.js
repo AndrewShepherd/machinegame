@@ -94,7 +94,11 @@ const locationProvider = (function() {
     // TODO: Binary search!
     let minPossibleValue = 0;
     let indexesToDelete = [];
+    let lastLocation = undefined;
     for(let l of locations) {
+      if(lastLocation && lastLocation.x == l.x && lastLocation.y == l.y) {
+        continue;
+      }
       maxPossibleValue = unexploredLocations.length - 1;
       found = false;
       while(minPossibleValue <= maxPossibleValue) {
@@ -305,15 +309,14 @@ function play(state) {
   const countOfAllRobots = availableRobots.length;
   const locationsOccupied = [];
   for(let r of availableRobots) {
-    locationsOccupied.push(r);
-    locationsOccupied.push({x: r.x - 1, y:r.y});
-    locationsOccupied.push({x: r.x + 1, y:r.y});
-    locationsOccupied.push({x: r.x, y:r.y - 1});
-    locationsOccupied.push({x: r.x, y:r.y + 1});
-    locationsOccupied.push({x: r.x -1, y:r.y-1});
-    locationsOccupied.push({x: r.x+1, y:r.y+1});
-    locationsOccupied.push({x:r.x-1, y:r.y+1});
-    locationsOccupied.push({x:r.x-1, y:r.y-1});
+    for(let dx = -4; dx <= 4; ++dx) {
+      for(let dy = -4; dy <= 4; ++dy) {
+        locationsOccupied.push({
+          x: r.x + dx,
+          y: r.y + dy
+        });
+      }
+    }
   }
   locationProvider.markAsExplored(locationsOccupied);
   
@@ -322,6 +325,10 @@ function play(state) {
 
    if(state.red.robots.length) {
      console.log(`${iteration}: Found enemy! ${state.red.robots.length} enemy robots`);
+     
+     for(let r of state.red.robots) {
+       r.charges = -1;
+     }
 
      let i = 0;
      let totalAttackers = 0;
@@ -380,24 +387,30 @@ function play(state) {
      }
      availableRobots.splice(0, availableRobots.length)
    }
+
+
+   // Miners, guards and explorers
+   let availableMiners = Math.ceil(availableRobots.length / 2);
+
+
    
    const chargedUpRobots = availableRobots.filter(r => r.charges >= 3);
-   const robotLimit = 175;
+   const robotLimit = 250;
    let allowableRobots = robotLimit - countOfAllRobots;
    for(let r of chargedUpRobots) {
      if(--allowableRobots > 0) {
        r.clone();
        availableRobots.splice(availableRobots.indexOf(r), 1);
+       --availableMiners;
      } else {
        console.log(`${iteration}: Not cloning robots as we have too many!`);
        break;
      }
    }
    
-   // Miners, guards and explorers
-   const availableMiners = Math.ceil(availableRobots.length / 2);
-   const availableGuards = Math.ceil((availableRobots.length - availableMiners)/2);
+  const availableGuards = Math.ceil((availableRobots.length - availableMiners)/2);
    const availableExplorers = Math.max(0, availableRobots.length - availableMiners - availableGuards);
+   
    
    if(availableGuards > 0) {
      console.log(`${iteration}: ${Date.now()-millisecondsStart} assigning ${availableGuards} guards`);
@@ -422,7 +435,7 @@ function play(state) {
       return (++assignedMiners < availableMiners);
      }
   );
-   
+  console.log(`${iteration}: assigned ${assignedMiners} miners`);
 
    // Go into explorer mode
    if(availableRobots.length) {
@@ -430,6 +443,7 @@ function play(state) {
      if(timeSoFar < 50) {
        console.log(`${iteration}: ${Date.now()-millisecondsStart} assigning exploration locations to ${availableRobots.length} robots`);
       const locationsToVisit = locationProvider.getNext(availableRobots.length);
+      console.log(`${iteration}: first exploration location is (${locationsToVisit[0].x}, ${locationsToVisit[0].y})`);
       assignRobotsToLocations(availableRobots, locationsToVisit);   
      } else {
        console.log(`${iteration}: ${timeSoFar} Not assigning explorers as there isn't enout time`);
@@ -486,46 +500,3 @@ function play(state) {
   // to your robots to move, collect charges, clone, attack and defend, and
   // ultimately capture red's flag.
 
-
-
-
-
-
-// ------------------ previous code
-
-// 
-// function proximity(l, r) {
-//   return Math.abs(l.x - r.x) + Math.abs(l.y - r.y);
-// }
-// 
-// function play(state) {
-// 
-
-
-//   for(let r of availableRobots) {
-//       var randomPoint = {
-//         x: Math.round(Math.random() * 48 - 24),
-//         y: Math.round(Math.random() * 48 - 24),
-//       }
-//       r.moveTo(randomPoint)  
-//   }
-// 
-// 
-// }
-// 
-// 
-// 
-// 
-// 
-// 
-// // ------------------ previous code
-// 
-// // 
-// // function play(state) {
-// //   var robot = state.robots[0];
-// //   var flag = state.red.flag;
-// //   
-// //   robot.moveTo(flag);
-// // 
-// // }
-// // 
