@@ -6,6 +6,28 @@ interface Point {
   y: number;
 }
 
+interface EnemyRobot extends Point {
+  charges: number;
+}
+
+interface Robot extends Point {
+  moveTo(pos: Point) : void;
+  clone() : void;
+  collect(): void;
+  attack(enemy: EnemyRobot) : void;
+  charges: number;
+}
+
+
+interface GameState {
+  robots: Robot[];
+  charges: Point[];
+  red: {
+    robots: EnemyRobot[];
+    flag: Point;
+  }
+}
+
 function proximity(l:Point, r:Point) {
   const h = Math.abs(l.x - r.x);
   const v = Math.abs(l.y - r.y);
@@ -141,19 +163,16 @@ const locationProvider = (function() {
   
 })();
 
+class ChargeRegister {
+  private knownCharges: Point[] = [];
 
-const chargeRegister = (function() {
-
-  let knownCharges:Point[] = [];
-  
-  return {
-   incorporate: function(charges:Point[]) {
+  public incorporate(charges:Point[]) {
     charges.sort(comparePoints);
     // TODO: make this much faster
     const toAdd = [];
     for(let c of charges) {
       let found = false;
-      for(let kc of knownCharges) {
+      for(let kc of this.knownCharges) {
         if((kc.x == c.x) && (kc.y == c.y)) {
           found = true;
           break;
@@ -163,52 +182,33 @@ const chargeRegister = (function() {
         toAdd.push(c);
       }
     }
-    knownCharges = knownCharges.concat(toAdd);
-    knownCharges.sort(comparePoints);
-   },
-   getAll: function() {
-     return knownCharges.slice();
-   },
-   remove: function(chargeToRemove: Point) {
-     for(let i = 0; i < knownCharges.length; ++i) {
-       const thisCharge = knownCharges[i];
-       if(thisCharge.x == chargeToRemove.x && thisCharge.y == chargeToRemove.y) {
-         knownCharges.splice(i, 1);
-         return;
-       }
-     }
-   }
+    this.knownCharges = this.knownCharges.concat(toAdd);
+    this.knownCharges.sort(comparePoints);
+   };
+   public getAll() {
+    return this.knownCharges.slice();
+  };
+  public remove(chargeToRemove: Point) {
+    for(let i = 0; i < this.knownCharges.length; ++i) {
+      const thisCharge = this.knownCharges[i];
+      if(thisCharge.x == chargeToRemove.x && thisCharge.y == chargeToRemove.y) {
+        this.knownCharges.splice(i, 1);
+        return;
+      }
+    }
   }
-})();
+}
 
+const chargeRegister = new ChargeRegister();
 
 const getGuardPositions = (function() {
-  const positions: Point[] = [
-    {x: -1, y: -1},
-    {x: 1, y: 1 },
-    {x: -1, y: 1},
-    {x: 1, y: -1 },
-    {x: -3, y: -3 },
-    {x: 3, y: 3 },
-    {x: -3, y: 3 },
-    {x: 3, y: -3 },
-    {x: 0, y: 1 },
-    {x: 0, y: -1 },
-    {x: 1, y: 0 },
-    {x: -1, y: 0 },
-    {x: 3, y: 0 },
-    {x: -3, y : 0 },
-    {x: 0, y: -3 },
-    {x: 0, y:  3 },
-    {x: 4, y: 4 },
-    {x: 4, y: -4 },
-    {x: -4, y: 4 },
-    {x: -4, y: -4 },
-    {x: -4, y: 0 },
-    {x: 4, y: 0 },
-    {x: 0, y: 4 },
-    {x: 0, y: -4 }
-  ];
+  const positions: Point[] = [];
+    for(let x = -2; x <= 2; ++x) {
+      for(let y = -2; y <= 2; ++y) {
+        positions.push({x: x, y: y});
+      }
+    }
+    positions.sort(comparePoints);
   return function(count:number) {
     let result:Point[] = [];
     while(result.length < count) {
@@ -221,17 +221,7 @@ const getGuardPositions = (function() {
 
 let enemyFlag:Point = undefined;
 
-interface EnemyRobot extends Point {
-  charges: number;
-}
 
-interface Robot extends Point {
-  moveTo(pos: Point) : void;
-  clone() : void;
-  collect(): void;
-  attack(enemy: EnemyRobot) : void;
-  charges: number;
-}
 
 function guardedMoveTo(robot : Robot, pos: Point) {
   if(robot.x == pos.x && robot.y == pos.y) {
@@ -264,7 +254,7 @@ function assignRobotsToLocations(
   availableRobots:Robot[],
   locations: Point[],
   doAssignment? : AssignmentFunction
-  ) {
+  ) : number {
   let proximities:ProximityEntry[] = [];
   availableRobots.sort(comparePoints);
   locations.sort(comparePoints);
@@ -315,22 +305,16 @@ function assignRobotsToLocations(
     robot.moveTo(location);
     return true;
   }; 
+  let assignmentCount = 0;
   for(let a of assignments) {
+    ++assignmentCount;
     availableRobots.splice(availableRobots.indexOf(a.robot), 1);
     locations.splice(locations.indexOf(a.location), 1);
     if(!doAssignment(a.robot, a.location)) {
       break;
     }
   }
-}
-
-interface GameState {
-  robots: Robot[];
-  charges: Point[];
-  red: {
-    robots: EnemyRobot[];
-    flag: Point;
-  }
+  return assignmentCount;
 }
 
 function play(state : GameState) {
@@ -410,7 +394,7 @@ function play(state : GameState) {
   if(enemyFlag) {
       console.log(`${iteration}: Found flag at (${enemyFlag.x}, ${enemyFlag.y})`)
 
-     for(var r of availableRobots) {
+     for(let r of availableRobots) {
        guardedMoveTo(r, enemyFlag);
      }
      availableRobots.splice(0, availableRobots.length)
@@ -441,10 +425,9 @@ function play(state : GameState) {
    
    
    if(availableGuards > 0) {
-     console.log(`${iteration}: ${Date.now()-millisecondsStart} assigning ${availableGuards} guards`);
      const guardLocations = getGuardPositions(availableGuards);
      assignRobotsToLocations(availableRobots, guardLocations);
-     console.log(`${iteration}: ${Date.now()-millisecondsStart} completed assigning guards`);
+     console.log(`${iteration}: [${Date.now()-millisecondsStart}] Assigned ${availableGuards} guards`);
    }
 
    
@@ -463,16 +446,17 @@ function play(state : GameState) {
       return (++assignedMiners < availableMiners);
      }
   );
-  console.log(`${iteration}: assigned ${assignedMiners} miners`);
+  console.log(`${iteration}: [${Date.now()-millisecondsStart}] Assigned ${assignedMiners} miners`);
 
    // Go into explorer mode
    if(availableRobots.length) {
      const timeSoFar = Date.now()-millisecondsStart;
      if(timeSoFar < 50) {
-       console.log(`${iteration}: ${Date.now()-millisecondsStart} assigning exploration locations to ${availableRobots.length} robots`);
       const locationsToVisit = locationProvider.getNext(availableRobots.length);
       console.log(`${iteration}: first exploration location is (${locationsToVisit[0].x}, ${locationsToVisit[0].y})`);
-      assignRobotsToLocations(availableRobots, locationsToVisit);   
+      const assignmentCount = assignRobotsToLocations(availableRobots, locationsToVisit);   
+      console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${assignmentCount} explorers`);
+
      } else {
        console.log(`${iteration}: ${timeSoFar} Not assigning explorers as there isn't enout time`);
      }
@@ -480,51 +464,7 @@ function play(state : GameState) {
   
      const millisecondsEnd = Date.now();
 
-   console.log(`${iteration}: Returning from the method. Milliseconds = ${millisecondsEnd - millisecondsStart}`);
+   console.log(`${iteration}: [${millisecondsEnd - millisecondsStart}] Returning from the method.`);
 }
-  // `state` contains information about what your robots can see:
-  // state = {
-  //  robots: [         → an array of your robots
-  //   { x, y,          → integers, the position of your robot on the grid
-  //     charges }      → integer, the health of your robot
-  //  ],
-  //  charges: [        → an array of charges on the ground
-  //   { x, y }
-  //  ],
-  //  red: {            → what you can see from the red player
-  //   robots: [        → red's robots
-  //    { x, y,         → the position of the robot
-  //      charges }     → the health of the robot
-  //    ],
-  //    flag: { x, y }  → red's flag, if you already found it
-  //  },
-  // }
 
-  // You can give one of 4 instructions to your robot:
-  //
-  // 1. robot.moveTo(destination)
-  //  The robot attempts to move to that position on the grid, one step each
-  //  turn, including diagonally (like a king in chess).
-  // `destination` can be either an object: `robot.moveTo(flag)` or coordinates
-  // `robot.moveTo({x:1, y:2})`.
-  //  Robots cannot move to a position occupied by red's robot.
-  //
-  // 2. robot.collect()
-  //  The robot will attempt to pickup a charge on the ground.
-  //  If successful, it will increment the robot.charges.
-  //
-  // 3. robot.clone()
-  //  If the robot has 3 or more charges, spend 2 to create a new robot.
-  //  There is a maximum of 256 robots per player.
-  //
-  // 4. robot.attack(redRobot)
-  //  If your robot is next to another robot (including diagonal), it can
-  //  smite them and remove 1 charge from them. If a robot reaches 0 charges,
-  //  it drops dead.
-  //
-  // You win when one of your robots is on red's flag.
-
-  // Change the `play` function so it handles any state and gives instructions
-  // to your robots to move, collect charges, clone, attack and defend, and
-  // ultimately capture red's flag.
 
