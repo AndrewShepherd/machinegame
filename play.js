@@ -1,4 +1,3 @@
-//                   ---===≡≡≡ machinegame ≡≡≡===---
 function proximity(l, r) {
     var h = Math.abs(l.x - r.x);
     var v = Math.abs(l.y - r.y);
@@ -16,7 +15,6 @@ function comparePoints(l, r) {
     else if (dL > dR) {
         return 1;
     }
-    // The top row
     if (l.y === (0 - dL)) {
         if (r.y === (0 - dL)) {
             return l.x < r.x ? -1 : 1;
@@ -28,7 +26,6 @@ function comparePoints(l, r) {
     if (r.y === (0 - dL)) {
         return 1;
     }
-    // The right side
     if (l.x === dL) {
         if (r.x === l.x) {
             return l.y < r.y ? -1 : 1;
@@ -40,10 +37,9 @@ function comparePoints(l, r) {
     if (r.x === dL) {
         return 1;
     }
-    // The bottom
     if (l.y === dL) {
         if (r.y == l.y) {
-            return l.x > r.x ? -1 : 1; // Not an error
+            return l.x > r.x ? -1 : 1;
         }
         else {
             return -1;
@@ -93,7 +89,6 @@ var locationProvider = (function () {
                     minPossibleValue = midPoint + 1;
                 }
                 else {
-                    //console.log(`Going to delete location ${l.x}, ${l.y} at index ${midPoint}`);
                     indexesToDelete.push(midPoint);
                     found = true;
                     break;
@@ -129,7 +124,6 @@ var chargeRegister = (function () {
     return {
         incorporate: function (charges) {
             charges.sort(comparePoints);
-            // TODO: make this much faster
             var toAdd = [];
             for (var _i = 0, charges_1 = charges; _i < charges_1.length; _i++) {
                 var c = charges_1[_i];
@@ -204,9 +198,7 @@ function guardedMoveTo(robot, pos) {
         return;
     }
     try {
-        //console.log(`Moving robot at (${robot.x}, ${robot.y}) to (${pos.x}, ${pos.y})`);
         robot.moveTo(pos);
-        //console.log(`Returned from robot.moveTo`);
     }
     catch (e) {
         console.error("Error when invoking robot.moveTo");
@@ -361,7 +353,6 @@ function play(state) {
         }
         availableRobots.splice(0, availableRobots.length);
     }
-    // Miners, guards and explorers
     var availableMiners = Math.ceil(availableRobots.length / 2);
     var chargedUpRobots = availableRobots.filter(function (r) { return r.charges >= 3; });
     var robotLimit = 250;
@@ -398,7 +389,6 @@ function play(state) {
         return (++assignedMiners < availableMiners);
     });
     console.log(iteration + ": assigned " + assignedMiners + " miners");
-    // Go into explorer mode
     if (availableRobots.length) {
         var timeSoFar = Date.now() - millisecondsStart;
         if (timeSoFar < 50) {
@@ -414,46 +404,3 @@ function play(state) {
     var millisecondsEnd = Date.now();
     console.log(iteration + ": Returning from the method. Milliseconds = " + (millisecondsEnd - millisecondsStart));
 }
-// `state` contains information about what your robots can see:
-// state = {
-//  robots: [         → an array of your robots
-//   { x, y,          → integers, the position of your robot on the grid
-//     charges }      → integer, the health of your robot
-//  ],
-//  charges: [        → an array of charges on the ground
-//   { x, y }
-//  ],
-//  red: {            → what you can see from the red player
-//   robots: [        → red's robots
-//    { x, y,         → the position of the robot
-//      charges }     → the health of the robot
-//    ],
-//    flag: { x, y }  → red's flag, if you already found it
-//  },
-// }
-// You can give one of 4 instructions to your robot:
-//
-// 1. robot.moveTo(destination)
-//  The robot attempts to move to that position on the grid, one step each
-//  turn, including diagonally (like a king in chess).
-// `destination` can be either an object: `robot.moveTo(flag)` or coordinates
-// `robot.moveTo({x:1, y:2})`.
-//  Robots cannot move to a position occupied by red's robot.
-//
-// 2. robot.collect()
-//  The robot will attempt to pickup a charge on the ground.
-//  If successful, it will increment the robot.charges.
-//
-// 3. robot.clone()
-//  If the robot has 3 or more charges, spend 2 to create a new robot.
-//  There is a maximum of 256 robots per player.
-//
-// 4. robot.attack(redRobot)
-//  If your robot is next to another robot (including diagonal), it can
-//  smite them and remove 1 charge from them. If a robot reaches 0 charges,
-//  it drops dead.
-//
-// You win when one of your robots is on red's flag.
-// Change the `play` function so it handles any state and gives instructions
-// to your robots to move, collect charges, clone, attack and defend, and
-// ultimately capture red's flag.

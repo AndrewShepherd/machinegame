@@ -12,8 +12,6 @@ function proximity(l:Point, r:Point) {
   return Math.max(h, v);
 }
 
-
-
 function comparePoints(l:Point, r:Point) {
     if((l.x === r.x) && (l.y === r.y)) {
       return 0;
@@ -223,10 +221,15 @@ const getGuardPositions = (function() {
 
 let enemyFlag:Point = undefined;
 
+interface EnemyRobot extends Point {
+  charges: number;
+}
+
 interface Robot extends Point {
   moveTo(pos: Point) : void;
   clone() : void;
   collect(): void;
+  attack(enemy: EnemyRobot) : void;
   charges: number;
 }
 
@@ -325,7 +328,7 @@ interface GameState {
   robots: Robot[];
   charges: Point[];
   red: {
-    robots: Robot[];
+    robots: EnemyRobot[];
     flag: Point;
   }
 }
