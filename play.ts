@@ -426,8 +426,8 @@ namespace Battle {
       };
 
       console.log(`Battle plan handing ${robotsAndNodes.length} robots and nodes. Time = ${Date.now() - timeAtStart}`);
-      if(robotsAndNodes.length > 1000) {
-        robotsAndNodes = robotsAndNodes.slice(0, 1000);
+      if(robotsAndNodes.length > 500) {
+        robotsAndNodes = robotsAndNodes.slice(0, 500);
       }
       let totalAssignedRobots = 0;
       while(robotsAndNodes.length) {
@@ -649,9 +649,17 @@ function play(state : GameState) {
      const timeSoFar = Date.now()-millisecondsStart;
      if(timeSoFar < 50) {
       const locationsToVisit = locationProvider.getNext(availableRobots.length);
-      const firstLocation = locationsToVisit[0];
-      const assignmentCount = assignRobotsToLocations(availableRobots, locationsToVisit);   
-      console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${assignmentCount} additional explorers. First location is (${firstLocation.x}, ${firstLocation.y})`);
+      if(locationsToVisit.length) {
+        const firstLocation = locationsToVisit[0];
+        const assignmentCount = assignRobotsToLocations(availableRobots, locationsToVisit);   
+        console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${assignmentCount} additional explorers. First location is (${firstLocation.x}, ${firstLocation.y})`);  
+      } else {
+        if(enemyFlag) {
+          for(let r of availableRobots) {
+            r.moveTo({ x: enemyFlag.x + 3, y: enemyFlag.y + 3 });
+          }
+        }
+      }
 
      } else {
        console.log(`${iteration}: ${timeSoFar} Not assigning explorers as there isn't enout time`);
