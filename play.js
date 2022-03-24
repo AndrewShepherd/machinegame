@@ -163,13 +163,7 @@ class ChargeRegister {
 }
 const chargeRegister = new ChargeRegister();
 const getGuardPositions = (function () {
-    const positions = [];
-    for (let x = -1; x <= 1; ++x) {
-        for (let y = -1; y <= 1; ++y) {
-            positions.push({ x: x, y: y });
-        }
-    }
-    positions.sort(comparePoints);
+    const positions = [{ x: 0, y: 0 }];
     return function (count) {
         let result = [];
         while (result.length < count) {
@@ -328,7 +322,7 @@ var Battle;
                 e.node.assignedRobots.push(e.robot);
                 const totalEnemyCharges = e.node.occupiedPosition.enemies.map(e => e.charges).reduce((l, r) => l + r);
                 const totalRobotCharges = e.node.assignedRobots.map(r => r.charges).reduce((l, r) => l + r);
-                const enemyIsBeaten = totalRobotCharges > totalEnemyCharges;
+                const enemyIsBeaten = totalRobotCharges > totalEnemyCharges * 2;
                 const indexesToDelete = [];
                 for (let i = 0; i < robotsAndNodes.length; ++i) {
                     const rn = robotsAndNodes[i];
