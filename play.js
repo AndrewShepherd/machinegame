@@ -124,14 +124,20 @@ class ChargeRegister {
     }
     incorporate(charges) {
         charges.sort(comparePoints);
+        let knownChargeIndex = 0;
         const toAdd = [];
         for (let c of charges) {
             let found = false;
-            for (let kc of this.knownCharges) {
-                if ((kc.x == c.x) && (kc.y == c.y)) {
+            while (knownChargeIndex < this.knownCharges.length) {
+                const compareResult = comparePoints(c, this.knownCharges[knownChargeIndex]);
+                if (compareResult == 0) {
                     found = true;
                     break;
                 }
+                if (compareResult < 1) {
+                    break;
+                }
+                ++knownChargeIndex;
             }
             if (!found) {
                 toAdd.push(c);
@@ -264,54 +270,32 @@ function play(state) {
     }
     locationProvider.markAsExplored(locationsOccupied);
     chargeRegister.incorporate(state.charges.filter(c => !!c));
+    let totalAttackers = 0;
     if (state.red.robots.length) {
         console.log(`${iteration}: Found enemy! ${state.red.robots.length} enemy robots`);
-        let i = 0;
-        let totalAttackers = 0;
-        while (state.red.robots.length && availableRobots.length) {
-            const enemy = state.red.robots[i];
-            let closestRobot = undefined;
-            let closestProximity = 100000;
-            for (let r of availableRobots) {
-                const p = proximity(r, enemy);
-                if (p < closestProximity) {
-                    closestRobot = r;
-                    closestProximity = p;
+        let robotsToAttack = state.red.robots.slice();
+        while (robotsToAttack.length && availableRobots.length) {
+            const enemyWithHealthRemaining = robotsToAttack.slice();
+            totalAttackers += assignRobotsToLocations(availableRobots, robotsToAttack, (robot, enemy) => {
+                switch (proximity(robot, enemy)) {
+                    case 1:
+                        robot.attack(enemy);
+                        break;
+                    case 2:
+                        break;
+                    default:
+                        robot.moveTo(enemy);
                 }
-            }
-            if (closestRobot) {
-                if (closestProximity <= 1) {
-                    console.log(`${iteration}: Robot at (${closestRobot.x}, ${closestRobot.y} attacking enemy at ${enemy.x}, ${enemy.y}`);
-                    closestRobot.attack(enemy);
-                    console.log(`Returned from robot.attack(...)`);
+                enemy.charges -= robot.charges;
+                if (enemy.charges < 1) {
+                    enemyWithHealthRemaining.splice(enemyWithHealthRemaining.indexOf(enemy), 1);
                 }
-                else if (closestProximity == 2) {
-                    console.log(`${iteration}: Robot at (${closestRobot.x}, ${closestRobot.y} is 2 away from ${enemy.x}, ${enemy.y}`);
-                }
-                else {
-                    guardedMoveTo(closestRobot, enemy);
-                }
-                availableRobots.splice(availableRobots.indexOf(closestRobot), 1);
-            }
-            else {
-                console.error(`Closest robot is falsy!`);
-            }
-            enemy.charges = enemy.charges - closestRobot.charges;
-            console.log(`enemy.charges now equals ${enemy.charges}`);
-            if (enemy.charges > 0) {
-                if (state.red.robots.length) {
-                    i = (i + 1) % state.red.robots.length;
-                }
-            }
-            else {
-                state.red.robots.splice(state.red.robots.indexOf(enemy), 1);
-                if (state.red.robots.length) {
-                    i = i % state.red.robots.length;
-                }
-            }
-            ++totalAttackers;
+                return true;
+            });
+            robotsToAttack = enemyWithHealthRemaining;
         }
     }
+    console.log(`${iteration}: [${Date.now() - millisecondsStart}] Assigned ${totalAttackers} attackers`);
     enemyFlag = enemyFlag || state.red.flag;
     if (enemyFlag) {
         console.log(`${iteration}: Found flag at (${enemyFlag.x}, ${enemyFlag.y})`);
@@ -337,11 +321,10 @@ function play(state) {
     }
     const availableGuards = Math.ceil((availableRobots.length - availableMiners) / 2);
     const availableExplorers = Math.max(0, availableRobots.length - availableMiners - availableGuards);
-    if (availableGuards > 0) {
-        const guardLocations = getGuardPositions(availableGuards);
-        assignRobotsToLocations(availableRobots, guardLocations);
-        console.log(`${iteration}: [${Date.now() - millisecondsStart}] Assigned ${availableGuards} guards`);
-    }
+    const explorerAndGuardLocations = locationProvider.getNext(availableExplorers)
+        .concat(getGuardPositions(availableGuards));
+    const assignmentCount = assignRobotsToLocations(availableRobots, explorerAndGuardLocations);
+    console.log(`${iteration}: [${Date.now() - millisecondsStart}] assigned ${assignmentCount} guardsAndLocations.`);
     let assignedMiners = 0;
     assignRobotsToLocations(availableRobots, chargeRegister.getAll(), (robot, location) => {
         if (robot.x == location.x && robot.y == location.y) {
@@ -358,9 +341,9 @@ function play(state) {
         const timeSoFar = Date.now() - millisecondsStart;
         if (timeSoFar < 50) {
             const locationsToVisit = locationProvider.getNext(availableRobots.length);
-            console.log(`${iteration}: first exploration location is (${locationsToVisit[0].x}, ${locationsToVisit[0].y})`);
+            const firstLocation = locationsToVisit[0];
             const assignmentCount = assignRobotsToLocations(availableRobots, locationsToVisit);
-            console.log(`${iteration}: [${Date.now() - millisecondsStart}] assigned ${assignmentCount} explorers`);
+            console.log(`${iteration}: [${Date.now() - millisecondsStart}] assigned ${assignmentCount} additional explorers. First location is (${firstLocation.x}, ${firstLocation.y})`);
         }
         else {
             console.log(`${iteration}: ${timeSoFar} Not assigning explorers as there isn't enout time`);
