@@ -251,11 +251,82 @@ function assignRobotsToLocations(availableRobots, locations, doAssignment) {
     }
     return assignmentCount;
 }
+var Battle;
+(function (Battle) {
+    class BattlePlanner {
+        constructor(state) {
+            this.state = state;
+        }
+        generatePlan() {
+            const sortedEnemy = this.state.red.robots.slice();
+            sortedEnemy.sort(comparePoints);
+            if (sortedEnemy.length) {
+                console.log("*** Here is the enemy locations ***");
+                for (let e of sortedEnemy) {
+                    console.log(`*** (${e.x}, ${e.y}) charges ${e.charges}`);
+                }
+            }
+            const nodes = this.state.red.robots.map(r => { return { enemy: r, attackingRobots: [], hesitantRobots: [] }; });
+            const robotsAndNodes = [];
+            for (let r of this.state.robots) {
+                for (let n of nodes) {
+                    robotsAndNodes.push({
+                        robot: r,
+                        node: n,
+                        proximity: proximity(r, n.enemy)
+                    });
+                }
+            }
+            robotsAndNodes.sort((l, r) => l.proximity < r.proximity ? 1 : (l.proximity > r.proximity ? -1 : 0));
+            const plan = {
+                moves: new Array(),
+                attacks: new Array()
+            };
+            while (robotsAndNodes.length) {
+                const e = robotsAndNodes.pop();
+                if (e.proximity === 1) {
+                    plan.attacks.push({ robot: e.robot, enemy: e.node.enemy });
+                }
+                else if (e.proximity === 2) {
+                    e.node.hesitantRobots.push(e.robot);
+                }
+                else {
+                    plan.moves.push({ robot: e.robot, location: e.node.enemy });
+                }
+                e.node.attackingRobots.push(e.robot);
+                const enemyIsBeaten = e.node.enemy.charges < (e.node.attackingRobots.length + e.node.hesitantRobots.length);
+                const indexesToDelete = [];
+                for (let i = 0; i < robotsAndNodes.length; ++i) {
+                    const rn = robotsAndNodes[i];
+                    if ((rn.robot === e.robot) || (enemyIsBeaten && (rn.node === e.node))) {
+                        indexesToDelete.push(i);
+                    }
+                }
+                for (let i = indexesToDelete.length - 1; i >= 0; --i) {
+                    robotsAndNodes.splice(i, 1);
+                }
+            }
+            for (let n of nodes) {
+                if (n.hesitantRobots.length) {
+                    console.log(`${n.hesitantRobots.length} close to enemy at (${n.enemy.x}, ${n.enemy.y})`);
+                    if ((n.hesitantRobots.length > 1) && (n.attackingRobots.length + n.hesitantRobots.length > n.enemy.charges)) {
+                        console.log(`Hesitant robots moving in!!!`);
+                        for (let r of n.hesitantRobots) {
+                            plan.moves.push({ robot: r, location: n.enemy });
+                        }
+                    }
+                }
+            }
+            return plan;
+        }
+    }
+    Battle.BattlePlanner = BattlePlanner;
+})(Battle || (Battle = {}));
 function play(state) {
     ++iteration;
     const millisecondsStart = Date.now();
     console.log(`${iteration}: Starting iteration ${iteration}`);
-    const availableRobots = state.robots.filter(r => !!r);
+    let availableRobots = state.robots.filter(r => !!r);
     const countOfAllRobots = availableRobots.length;
     const locationsOccupied = [];
     for (let r of availableRobots) {
@@ -270,37 +341,22 @@ function play(state) {
     }
     locationProvider.markAsExplored(locationsOccupied);
     chargeRegister.incorporate(state.charges.filter(c => !!c));
-    let totalAttackers = 0;
-    if (state.red.robots.length) {
-        console.log(`${iteration}: Found enemy! ${state.red.robots.length} enemy robots`);
-        let robotsToAttack = state.red.robots.slice();
-        while (robotsToAttack.length && availableRobots.length) {
-            const enemyWithHealthRemaining = robotsToAttack.slice();
-            totalAttackers += assignRobotsToLocations(availableRobots, robotsToAttack, (robot, enemy) => {
-                switch (proximity(robot, enemy)) {
-                    case 1:
-                        robot.attack(enemy);
-                        break;
-                    case 2:
-                        break;
-                    default:
-                        robot.moveTo(enemy);
-                }
-                enemy.charges -= robot.charges;
-                if (enemy.charges < 1) {
-                    enemyWithHealthRemaining.splice(enemyWithHealthRemaining.indexOf(enemy), 1);
-                }
-                return true;
-            });
-            robotsToAttack = enemyWithHealthRemaining;
-        }
-    }
-    console.log(`${iteration}: [${Date.now() - millisecondsStart}] Assigned ${totalAttackers} attackers`);
     enemyFlag = enemyFlag || state.red.flag;
+    const battlePlanner = new Battle.BattlePlanner(state);
+    const plan = battlePlanner.generatePlan();
+    for (let a of plan.attacks) {
+        a.robot.attack(a.enemy);
+        availableRobots.splice(availableRobots.indexOf(a.robot), 1);
+    }
+    for (let a of plan.moves) {
+        a.robot.moveTo(a.location);
+        availableRobots.splice(availableRobots.indexOf(a.robot), 1);
+    }
     if (enemyFlag) {
         console.log(`${iteration}: Found flag at (${enemyFlag.x}, ${enemyFlag.y})`);
+        const robotsTwoAway = [];
         for (let r of availableRobots) {
-            guardedMoveTo(r, enemyFlag);
+            r.moveTo(enemyFlag);
         }
         availableRobots.splice(0, availableRobots.length);
     }

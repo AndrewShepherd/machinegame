@@ -329,6 +329,7 @@ namespace Battle {
   interface EnemyNode {
     enemy: EnemyRobot;
     attackingRobots: Robot[];
+    hesitantRobots: Robot[];
   }
 
   interface Move {
@@ -352,7 +353,17 @@ namespace Battle {
     }
   
     public generatePlan(): BattlePlan {
-      const nodes = this.state.red.robots.map(r => { return { enemy: r, attackingRobots:[] }});
+
+      const sortedEnemy = this.state.red.robots.slice();
+      sortedEnemy.sort(comparePoints);
+      if(sortedEnemy.length) {
+        console.log("*** Here is the enemy locations ***");
+        for(let e of sortedEnemy) {
+          console.log(`*** (${e.x}, ${e.y}) charges ${e.charges}`);
+        }
+      }
+
+      const nodes = this.state.red.robots.map(r => { return { enemy: r, attackingRobots:[], hesitantRobots: [] }});
 
       const robotsAndNodes:{ robot: Robot, node: EnemyNode, proximity: number }[] = [];
       for(let r of this.state.robots) {
@@ -381,11 +392,13 @@ namespace Battle {
         const e = robotsAndNodes.pop();
         if(e.proximity === 1) {
           plan.attacks.push({ robot: e.robot, enemy: e.node.enemy});
+        } else if (e.proximity === 2) {
+          e.node.hesitantRobots.push(e.robot);
         } else {
           plan.moves.push({ robot: e.robot, location: e.node.enemy});
         }
         e.node.attackingRobots.push(e.robot);
-        const enemyIsBeaten = e.node.enemy.charges <= e.node.attackingRobots.length;
+        const enemyIsBeaten = e.node.enemy.charges < (e.node.attackingRobots.length + e.node.hesitantRobots.length);
         const indexesToDelete: number[] = [];
         for(let i = 0; i < robotsAndNodes.length; ++i) {
           const rn = robotsAndNodes[i];
@@ -396,6 +409,17 @@ namespace Battle {
         for(let i = indexesToDelete.length - 1; i >= 0; --i) {
           robotsAndNodes.splice(i, 1);
         }
+      }
+      for(let n of nodes) {
+        if(n.hesitantRobots.length) {
+          console.log(`${n.hesitantRobots.length} close to enemy at (${n.enemy.x}, ${n.enemy.y})`);
+          if ((n.hesitantRobots.length > 1) && (n.attackingRobots.length + n.hesitantRobots.length > n.enemy.charges)) {
+              console.log(`Hesitant robots moving in!!!`);
+              for (let r of n.hesitantRobots) {
+                  plan.moves.push({ robot: r, location: n.enemy });
+              }
+          }
+      }
       }
       return plan;
     } 
