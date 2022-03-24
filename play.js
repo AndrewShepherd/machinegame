@@ -266,14 +266,41 @@ var Battle;
                     console.log(`*** (${e.x}, ${e.y}) charges ${e.charges}`);
                 }
             }
-            const nodes = this.state.red.robots.map(r => { return { enemy: r, attackingRobots: [], hesitantRobots: [] }; });
+            else {
+                return BattlePlanner.emptyPlan;
+            }
+            const occupiedPositions = [{
+                    position: { x: sortedEnemy[0].x, y: sortedEnemy[0].y },
+                    enemies: [
+                        sortedEnemy[0]
+                    ]
+                }];
+            for (let i = 1; i < sortedEnemy.length; ++i) {
+                const e = sortedEnemy[i];
+                const last = occupiedPositions[occupiedPositions.length - 1];
+                if ((e.x == last.position.x) && (e.y == last.position.y)) {
+                    last.enemies.push(e);
+                }
+                else {
+                    occupiedPositions.push({
+                        enemies: [e],
+                        position: { x: e.x, y: e.y }
+                    });
+                }
+            }
+            const nodes = occupiedPositions.map(r => {
+                return {
+                    assignedRobots: [],
+                    occupiedPosition: r
+                };
+            });
             const robotsAndNodes = [];
             for (let r of this.state.robots) {
                 for (let n of nodes) {
                     robotsAndNodes.push({
                         robot: r,
                         node: n,
-                        proximity: proximity(r, n.enemy)
+                        proximity: proximity(r, n.occupiedPosition.position)
                     });
                 }
             }
@@ -284,17 +311,10 @@ var Battle;
             };
             while (robotsAndNodes.length) {
                 const e = robotsAndNodes.pop();
-                if (e.proximity === 1) {
-                    plan.attacks.push({ robot: e.robot, enemy: e.node.enemy });
-                }
-                else if (e.proximity === 2) {
-                    e.node.hesitantRobots.push(e.robot);
-                }
-                else {
-                    plan.moves.push({ robot: e.robot, location: e.node.enemy });
-                }
-                e.node.attackingRobots.push(e.robot);
-                const enemyIsBeaten = e.node.enemy.charges < (e.node.attackingRobots.length + e.node.hesitantRobots.length);
+                e.node.assignedRobots.push(e.robot);
+                const totalEnemyCharges = e.node.occupiedPosition.enemies.map(e => e.charges).reduce((l, r) => l + r);
+                const totalRobotCharges = e.node.assignedRobots.map(r => r.charges).reduce((l, r) => l + r);
+                const enemyIsBeaten = totalRobotCharges > totalEnemyCharges;
                 const indexesToDelete = [];
                 for (let i = 0; i < robotsAndNodes.length; ++i) {
                     const rn = robotsAndNodes[i];
@@ -303,23 +323,62 @@ var Battle;
                     }
                 }
                 for (let i = indexesToDelete.length - 1; i >= 0; --i) {
-                    robotsAndNodes.splice(i, 1);
+                    robotsAndNodes.splice(indexesToDelete[i], 1);
                 }
             }
             for (let n of nodes) {
-                if (n.hesitantRobots.length) {
-                    console.log(`${n.hesitantRobots.length} close to enemy at (${n.enemy.x}, ${n.enemy.y})`);
-                    if ((n.hesitantRobots.length > 1) && (n.attackingRobots.length + n.hesitantRobots.length > n.enemy.charges)) {
-                        console.log(`Hesitant robots moving in!!!`);
-                        for (let r of n.hesitantRobots) {
-                            plan.moves.push({ robot: r, location: n.enemy });
-                        }
+                let attackingRobots = [];
+                const movingRobots = [];
+                const hesitantRobots = [];
+                for (let r of n.assignedRobots) {
+                    const p = proximity(r, n.occupiedPosition.position);
+                    if (p == 1) {
+                        attackingRobots.push(r);
+                    }
+                    else if (p == 2) {
+                        hesitantRobots.push(r);
+                    }
+                    else {
+                        movingRobots.push(r);
+                    }
+                }
+                const totalAttack = hesitantRobots
+                    .map(r => r.charges)
+                    .reduce((l, r) => l + r, 0)
+                    + attackingRobots.map(r => r.charges).reduce((l, r) => l + r, 0);
+                const totalDefence = n.occupiedPosition.enemies.map(r => r.charges).reduce((l, r) => l + r);
+                if (totalAttack > totalDefence * 2) {
+                    attackingRobots = attackingRobots.concat(hesitantRobots);
+                }
+                else {
+                    if (hesitantRobots.length) {
+                        console.log(`${hesitantRobots.length} robots looking at position (${n.occupiedPosition.position.x}, ${n.occupiedPosition.position.y}). Not moving in yet`);
+                    }
+                    for (let h of hesitantRobots) {
+                        plan.moves.push({ robot: h, location: h });
+                    }
+                }
+                for (let r of movingRobots) {
+                    plan.moves.push({ robot: r, location: n.occupiedPosition.position });
+                }
+                let enemyIndex = 0;
+                let enemyDamage = 0;
+                for (let r of attackingRobots) {
+                    const enemy = n.occupiedPosition.enemies[enemyIndex % n.occupiedPosition.enemies.length];
+                    plan.attacks.push({ robot: r, enemy: enemy });
+                    if (++enemyDamage >= enemy.charges) {
+                        ++enemyIndex;
+                        enemyDamage = 0;
                     }
                 }
             }
             return plan;
         }
     }
+    BattlePlanner.emptyPlan = {
+        attacks: [],
+        moves: []
+    };
     Battle.BattlePlanner = BattlePlanner;
 })(Battle || (Battle = {}));
 function play(state) {
@@ -352,6 +411,8 @@ function play(state) {
         a.robot.moveTo(a.location);
         availableRobots.splice(availableRobots.indexOf(a.robot), 1);
     }
+    console.log(`${iteration}: [${Date.now() - millisecondsStart}] assigned ${plan.attacks.length} attacks.`);
+    console.log(`${iteration}: [${Date.now() - millisecondsStart}] assigned ${plan.moves.length} robots to move towards enemies.`);
     if (enemyFlag) {
         console.log(`${iteration}: Found flag at (${enemyFlag.x}, ${enemyFlag.y})`);
         const robotsTwoAway = [];
