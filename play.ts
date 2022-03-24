@@ -422,7 +422,7 @@ function play(state : GameState) {
 
 
    // Miners, guards and explorers
-   let availableMiners = Math.ceil(availableRobots.length / 2);
+   let availableMiners = Math.ceil(availableRobots.length * 2 / 3);
 
 
    
@@ -449,22 +449,58 @@ function play(state : GameState) {
    const assignmentCount = assignRobotsToLocations(availableRobots, explorerAndGuardLocations);
    console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${assignmentCount} guardsAndLocations.`);
    
-   let assignedMiners = 0;
-   
-   assignRobotsToLocations(
-     availableRobots,
-     chargeRegister.getAll(),
-     (robot, location) => {
-      if(robot.x == location.x && robot.y == location.y) {
-        robot.collect();
-        chargeRegister.remove(location);
-      } else {
-        robot.moveTo(location);
-      }
-      return (++assignedMiners < availableMiners);
-     }
-  );
-  console.log(`${iteration}: [${Date.now()-millisecondsStart}] Assigned ${assignedMiners} miners`);
+
+
+   let availableMines = chargeRegister.getAll();
+    
+    const allowableRovingMiners = Math.ceil(availableMiners/2);
+    const allowableCloseMiners = availableMiners - allowableRovingMiners;
+    let assignedMiners = 0;
+
+    const assignedRovingMiners = assignRobotsToLocations(
+        availableRobots,
+        availableMines,
+        (robot, location) => {
+            if (robot.x == location.x && robot.y == location.y) {
+                robot.collect();
+                chargeRegister.remove(location);
+            }
+            else {
+                robot.moveTo(location);
+            }
+            return (++assignedMiners < allowableRovingMiners);
+        }
+    );
+    console.log(`${iteration}: [${Date.now()-millisecondsStart}] Assigned ${assignedRovingMiners} roving miners`);
+
+
+
+    if (availableMines.length > allowableCloseMiners) {
+        availableMines.sort((a, b) => {
+            const da = (a.x * a.x + a.y * a.y);
+            const db = (b.x * b.x + b.y * b.y);
+            if (da < db) {
+                return -1;
+            }
+            if (da > db) {
+                return 1;
+            }
+            return 0;
+        });
+        availableMines = availableMines.slice(0, availableRobots.length);
+    }
+    const assignedCloseMiners = assignRobotsToLocations(availableRobots, availableMines, 
+        (robot, location) => {
+        if (robot.x == location.x && robot.y == location.y) {
+            robot.collect();
+            chargeRegister.remove(location);
+        }
+        else {
+            robot.moveTo(location);
+        }
+        return true;
+    });
+  console.log(`${iteration}: [${Date.now()-millisecondsStart}] Assigned ${assignedCloseMiners} close miners`);
 
    // If there are any robots left (more miners than mines) send them exploring
    if(availableRobots.length) {
