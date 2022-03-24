@@ -164,8 +164,8 @@ class ChargeRegister {
 const chargeRegister = new ChargeRegister();
 const getGuardPositions = (function () {
     const positions = [];
-    for (let x = -2; x <= 2; ++x) {
-        for (let y = -2; y <= 2; ++y) {
+    for (let x = -1; x <= 1; ++x) {
+        for (let y = -1; y <= 1; ++y) {
             positions.push({ x: x, y: y });
         }
     }
@@ -258,18 +258,16 @@ var Battle;
             this.state = state;
         }
         generatePlan() {
+            const timeAtStart = Date.now();
             const sortedEnemy = this.state.red.robots.slice();
             sortedEnemy.sort(comparePoints);
             if (sortedEnemy.length) {
-                console.log("*** Here is the enemy locations ***");
-                for (let e of sortedEnemy) {
-                    console.log(`*** (${e.x}, ${e.y}) charges ${e.charges}`);
-                }
+                console.log(`*** There is ${sortedEnemy.length} enemy ***`);
             }
             else {
                 return BattlePlanner.emptyPlan;
             }
-            const occupiedPositions = [{
+            let occupiedPositions = [{
                     position: { x: sortedEnemy[0].x, y: sortedEnemy[0].y },
                     enemies: [
                         sortedEnemy[0]
@@ -288,13 +286,15 @@ var Battle;
                     });
                 }
             }
+            console.log(`*** There are ${occupiedPositions.length} unique enemy positions ***`);
+            occupiedPositions = occupiedPositions.filter(p => p.position.x < 50 && p.position.y < 50);
             const nodes = occupiedPositions.map(r => {
                 return {
                     assignedRobots: [],
                     occupiedPosition: r
                 };
             });
-            const robotsAndNodes = [];
+            let robotsAndNodes = [];
             for (let r of this.state.robots) {
                 for (let n of nodes) {
                     robotsAndNodes.push({
@@ -309,8 +309,22 @@ var Battle;
                 moves: new Array(),
                 attacks: new Array()
             };
+            console.log(`Battle plan handing ${robotsAndNodes.length} robots and nodes. Time = ${Date.now() - timeAtStart}`);
+            if (robotsAndNodes.length > 1000) {
+                robotsAndNodes = robotsAndNodes.slice(0, 1000);
+            }
+            let totalAssignedRobots = 0;
             while (robotsAndNodes.length) {
                 const e = robotsAndNodes.pop();
+                if ((e.proximity > 1) && (this.state.robots.length - totalAssignedRobots < 10)) {
+                    console.log('Battle Plan leaving some non-fighting robots!');
+                    break;
+                }
+                if (Date.now() - timeAtStart > 20) {
+                    console.log('Battle Plan terminating early as too much time has past!');
+                    break;
+                }
+                ++totalAssignedRobots;
                 e.node.assignedRobots.push(e.robot);
                 const totalEnemyCharges = e.node.occupiedPosition.enemies.map(e => e.charges).reduce((l, r) => l + r);
                 const totalRobotCharges = e.node.assignedRobots.map(r => r.charges).reduce((l, r) => l + r);
@@ -414,12 +428,7 @@ function play(state) {
     console.log(`${iteration}: [${Date.now() - millisecondsStart}] assigned ${plan.attacks.length} attacks.`);
     console.log(`${iteration}: [${Date.now() - millisecondsStart}] assigned ${plan.moves.length} robots to move towards enemies.`);
     if (enemyFlag) {
-        console.log(`${iteration}: Found flag at (${enemyFlag.x}, ${enemyFlag.y})`);
-        const robotsTwoAway = [];
-        for (let r of availableRobots) {
-            r.moveTo(enemyFlag);
-        }
-        availableRobots.splice(0, availableRobots.length);
+        assignRobotsToLocations(availableRobots, [enemyFlag]);
     }
     let availableMiners = Math.ceil(availableRobots.length * 2 / 3);
     const chargedUpRobots = availableRobots.filter(r => r.charges >= 3);

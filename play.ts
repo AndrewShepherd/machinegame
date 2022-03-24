@@ -211,8 +211,8 @@ const chargeRegister = new ChargeRegister();
 
 const getGuardPositions = (function() {
   const positions: Point[] = [];
-    for(let x = -2; x <= 2; ++x) {
-      for(let y = -2; y <= 2; ++y) {
+    for(let x = -1; x <= 1; ++x) {
+      for(let y = -1; y <= 1; ++y) {
         positions.push({x: x, y: y});
       }
     }
@@ -363,20 +363,17 @@ namespace Battle {
     };
   
     public generatePlan(): BattlePlan {
-
+      const timeAtStart = Date.now();
       const sortedEnemy = this.state.red.robots.slice();
       sortedEnemy.sort(comparePoints);
       if(sortedEnemy.length) {
-        console.log("*** Here is the enemy locations ***");
-        for(let e of sortedEnemy) {
-          console.log(`*** (${e.x}, ${e.y}) charges ${e.charges}`);
-        }
+        console.log(`*** There is ${sortedEnemy.length} enemy ***`);
       } else {
         return BattlePlanner.emptyPlan;
       }
 
       // Get a list of occupied positions
-      const occupiedPositions:OccupiedPosition[] = [{
+      let occupiedPositions:OccupiedPosition[] = [{
         position: {x: sortedEnemy[0].x, y: sortedEnemy[0].y},
         enemies: [
           sortedEnemy[0]
@@ -394,7 +391,11 @@ namespace Battle {
           });
         }
       }
-      
+      console.log(`*** There are ${occupiedPositions.length} unique enemy positions ***`);
+      // Ignore them if they are too far away
+      occupiedPositions = occupiedPositions.filter(p => p.position.x < 50 && p.position.y < 50);
+
+
       const nodes:EnemyNode[] = occupiedPositions.map(
         r => { 
           return {
@@ -404,7 +405,7 @@ namespace Battle {
         }
       );
 
-      const robotsAndNodes:{ robot: Robot, node: EnemyNode, proximity: number }[] = [];
+      let robotsAndNodes:{ robot: Robot, node: EnemyNode, proximity: number }[] = [];
       for(let r of this.state.robots) {
         for(let n of nodes) {
           robotsAndNodes.push(
@@ -423,11 +424,24 @@ namespace Battle {
         moves: new Array<Move>(),
         attacks: new Array<Attack>()
       };
-      // - If the flag has been found rush the flag
-      // - If the robot is two away from the enemy it should
-      //   not move in because of first strike
+
+      console.log(`Battle plan handing ${robotsAndNodes.length} robots and nodes. Time = ${Date.now() - timeAtStart}`);
+      if(robotsAndNodes.length > 1000) {
+        robotsAndNodes = robotsAndNodes.slice(0, 1000);
+      }
+      let totalAssignedRobots = 0;
       while(robotsAndNodes.length) {
         const e = robotsAndNodes.pop();
+        if((e.proximity > 1) && (this.state.robots.length - totalAssignedRobots < 10)) {
+          console.log('Battle Plan leaving some non-fighting robots!');
+          break;
+        }
+        // Has too much time past?
+        if(Date.now() - timeAtStart > 20) {
+          console.log('Battle Plan terminating early as too much time has past!');
+          break;
+        }
+        ++totalAssignedRobots;
         e.node.assignedRobots.push(e.robot);
 
         const totalEnemyCharges = e.node.occupiedPosition.enemies.map(e => e.charges).reduce((l, r) => l+r);
@@ -521,10 +535,10 @@ function play(state : GameState) {
   locationProvider.markAsExplored(locationsOccupied);
   
 
-   chargeRegister.incorporate(state.charges.filter(c => !!c));
+  chargeRegister.incorporate(state.charges.filter(c => !!c));
 
 
-   enemyFlag = enemyFlag || state.red.flag;
+  enemyFlag = enemyFlag || state.red.flag;
   const battlePlanner = new Battle.BattlePlanner(state);
   const plan = battlePlanner.generatePlan();
   for(let a of plan.attacks) {
@@ -539,13 +553,13 @@ function play(state : GameState) {
   console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${plan.moves.length} robots to move towards enemies.`);
 
 
+  
   if(enemyFlag) {
-      console.log(`${iteration}: Found flag at (${enemyFlag.x}, ${enemyFlag.y})`)
-      const robotsTwoAway:Robot[] = [];
-     for(let r of availableRobots) {
-       r.moveTo(enemyFlag);
-     }
-     availableRobots.splice(0, availableRobots.length)
+    // Send a robot to it
+    assignRobotsToLocations(
+      availableRobots,
+      [enemyFlag]
+    );
    }
 
 
