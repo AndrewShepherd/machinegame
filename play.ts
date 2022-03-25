@@ -328,8 +328,11 @@ function assignRobotsToLocations<T extends Point>(
 
 namespace Battle {
 
+  enum PositionType { Normal, Flag}
+
   interface EnemyPosition {
     position: Point;
+    positionType: PositionType;
     enemies: EnemyNode[]
     assignedRobots: RobotNode[];
   }
@@ -408,6 +411,10 @@ namespace Battle {
       // Get a list of occupied positions
       let occupiedPositions:EnemyPosition[] = [];
       console.log(`Consolidating ${sortedEnemy.length} enemy`);
+
+      const isRedFlag = (p:Point) =>
+        this.state.red.flag && (this.state.red.flag.x === p.x) && (this.state.red.flag.y === p.y);
+
       for(let i = 0; i < sortedEnemy.length; ++i) {
         const e = sortedEnemy[i];
         const last:EnemyPosition = occupiedPositions.length ? occupiedPositions[occupiedPositions.length- 1] : undefined;
@@ -422,7 +429,8 @@ namespace Battle {
           const occupiedPositionNode: EnemyPosition = {
             assignedRobots: [],
             enemies: [],
-            position: {x: e.x, y: e.y}
+            position: {x: e.x, y: e.y},
+            positionType: isRedFlag(e) ? PositionType.Flag : PositionType.Normal // TODO: detect if it's the flag
           };
           const enemyNode: EnemyNode = {
             enemy: e,
@@ -466,11 +474,12 @@ namespace Battle {
       let crossRef:{ friendlyPosition: FriendlyPosition, enemyPosition: EnemyPosition, proximity: number }[] = [];
       for(let fp of friendlyPositions) {
         for(let ep of occupiedPositions) {
+          const p = proximity(fp.position, ep.position);
           crossRef.push(
             { 
               friendlyPosition: fp,
               enemyPosition: ep,
-              proximity: proximity(fp.position, ep.position)
+              proximity: p
             }
           );          
         }
@@ -481,22 +490,12 @@ namespace Battle {
             return -1;
           } else if (l.proximity > r.proximity) {
             return 1;
+          } else if (l.enemyPosition.positionType === PositionType.Flag) {
+            return r.enemyPosition.positionType === PositionType.Flag ? 0 : -1;
+          } else if (r.enemyPosition.positionType === PositionType.Flag) {
+            return 1;
           } else {
-            if(this.state.red.flag) {
-              if(
-                (l.enemyPosition.position.x == this.state.red.flag.x)
-                && (l.enemyPosition.position.y == this.state.red.flag.y)
-              ) {
-                return -1;
-              } else if (
-                (r.enemyPosition.position.x == this.state.red.flag.x)
-                && (r.enemyPosition.position.y === this.state.red.flag.y)
-              ) {
-                return 1;
-              }
-            } else {
-              return 0;
-            }
+            return 0;
           }
         }
       );
@@ -527,25 +526,26 @@ namespace Battle {
           break;
         }
 
+        console.log(`Assigning attackers from (${e.friendlyPosition.position.x}, ${e.friendlyPosition.position.y}) to (${e.enemyPosition.position.x}, ${e.enemyPosition.position.y}). Proximity = ${e.proximity}`);
+
         // How many are already attacking the enemy position
         const enemyCharges = e.enemyPosition.enemies.map(en => en.enemy.charges).reduce((l, r) => l+r, 0);
         let attackingCharges = e.enemyPosition.assignedRobots.map(ar => ar.robot.charges).reduce((l, r) => l+r, 0);
 
-
-        // This is buggy!
-        // It is just assigning all the robots from one position to attack another
-        // It might well be the case that only some of them
-        // shoud
         for(let robot of e.friendlyPosition.robots) {
+          if(robot.assignedAttack) {
+            console.log(`robot already assigned attack. Not reassigning`);
+            continue;
+          }
           ++totalAssignedRobots;
           robot.assignedAttack = e.enemyPosition;
           e.enemyPosition.assignedRobots.push(robot);
           attackingCharges += robot.robot.charges;
-          if(attackingCharges >= enemyCharges*2) {
+          if(attackingCharges > enemyCharges*2) {
             break;
           }
         }
-        const enemyIsBeaten = attackingCharges >= enemyCharges * 2;
+        const enemyIsBeaten = attackingCharges > enemyCharges * 2;
         const allRobotsAssigned = e.friendlyPosition.robots.every(rn => !!rn.assignedAttack);
         if(enemyIsBeaten || allRobotsAssigned) {
           for(let j = i+1; j < crossRef.length; ++j) {
@@ -564,7 +564,10 @@ namespace Battle {
       }
       // Now we have assigned robots to positions!
       // Next we decide which ones move, which ones attack
-      for(let n of occupiedPositions) {
+      //for(let n of occupiedPositions) {
+      for(let i = 0; i < occupiedPositions.length; ++i) {
+        const n = occupiedPositions[i];
+        console.log(`position (${n.position.x}, ${n.position.y}) we have ${n.assignedRobots.length} assigned robots`);
         let attackingRobots:Robot[] = [];
         const movingRobots:Robot[] = [];
         const hesitantRobots:Robot[] = [];
@@ -586,6 +589,7 @@ namespace Battle {
           .reduce((l,r) => l+r, 0) 
           + attackingRobots.map(r => r.charges).reduce((l, r) => l+r, 0);
         const totalDefence = n.enemies.map(r => r.enemy.charges).reduce((l, r) => l+r, 0);
+        console.log(`position (${n.position.x}, ${n.position.y}) There are ${n.enemies.length} enemy robots with a total defence of ${totalDefence}`);
         if(totalAttack >= totalDefence*2) {
           attackingRobots = attackingRobots.concat(hesitantRobots);
         } else {
@@ -602,11 +606,15 @@ namespace Battle {
         let enemyIndex = 0;
         let enemyDamage = 0;
         for(let r of attackingRobots) {
-          const enemy = n.enemies[enemyIndex % n.enemies.length];
-          plan.attacks.push({ robot: r, enemy: enemy.enemy });
-          if(++enemyDamage >= enemy.enemy.charges) {
-            ++enemyIndex;
-            enemyDamage = 0;
+          if(n.enemies.length) {
+            const enemy = n.enemies[enemyIndex % n.enemies.length];
+            plan.attacks.push({ robot: r, enemy: enemy.enemy });
+            if(++enemyDamage >= enemy.enemy.charges) {
+              ++enemyIndex;
+              enemyDamage = 0;
+            }  
+          } else {
+            plan.moves.push({ robot: r, location: n.position });
           }
         }
       }
