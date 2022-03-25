@@ -86,7 +86,7 @@ let iteration = 0;
 
 const locationProvider = (function() {
   
-  console.log('Initializing the location provider');
+  // console.log('Initializing the location provider');
   
   let unexploredLocations : Point[] = [];
   for(let distance = 1; distance < 50; distance += 1) {
@@ -149,7 +149,7 @@ const locationProvider = (function() {
     }
 
     const millisecondsEnd = Date.now();
-    console.log(`markAsExplored. Processing ${locations.length} locations and removed ${totalRemoved}. Unexplored Locations Length = ${unexploredLocations.length}. Milliseconds Taken: ${millisecondsEnd - millisecondsStart}`);
+    // console.log(`markAsExplored. Processing ${locations.length} locations and removed ${totalRemoved}. Unexplored Locations Length = ${unexploredLocations.length}. Milliseconds Taken: ${millisecondsEnd - millisecondsStart}`);
   }
   
   function getNext(count:number) {
@@ -403,14 +403,14 @@ namespace Battle {
       const sortedEnemy = this.state.red.robots.slice();
       sortedEnemy.sort(comparePoints);
       if(sortedEnemy.length) {
-        console.log(`*** There is ${sortedEnemy.length} enemy ***`);
+        // console.log(`*** There is ${sortedEnemy.length} enemy ***`);
       } else {
         return BattlePlanner.emptyPlan;
       }
 
       // Get a list of occupied positions
       let occupiedPositions:EnemyPosition[] = [];
-      console.log(`Consolidating ${sortedEnemy.length} enemy`);
+      // console.log(`Consolidating ${sortedEnemy.length} enemy`);
 
       const isRedFlag = (p:Point) =>
         this.state.red.flag && (this.state.red.flag.x === p.x) && (this.state.red.flag.y === p.y);
@@ -440,7 +440,7 @@ namespace Battle {
           occupiedPositions.push(occupiedPositionNode);
         }
       }
-      console.log(`*** There are ${occupiedPositions.length} unique enemy positions ***`);
+      // console.log(`*** There are ${occupiedPositions.length} unique enemy positions ***`);
 
       // Create a list of friendly position nodes
       const sortedRobots = this.state.robots.slice();
@@ -469,12 +469,24 @@ namespace Battle {
           friendlyPositions.push(friendlyPosition);
         }
       }
-      console.log(`*** We have ${sortedRobots.length} robots in ${friendlyPositions.length} positions ***`);
+      // console.log(`*** We have ${sortedRobots.length} robots in ${friendlyPositions.length} positions ***`);
 
       let crossRef:{ friendlyPosition: FriendlyPosition, enemyPosition: EnemyPosition, proximity: number }[] = [];
       for(let fp of friendlyPositions) {
         for(let ep of occupiedPositions) {
           const p = proximity(fp.position, ep.position);
+
+          if(this.state.red.flag) {
+            if((ep.positionType === PositionType.Normal) && (p > 3)) {
+              // This is just noise. We need to capture the flag!
+              continue;
+            }
+          } else {
+            if ((this.state.robots.length > 100) && (p > 3)) {
+              // We can't deal with too much
+              continue; 
+            }
+          }
           crossRef.push(
             { 
               friendlyPosition: fp,
@@ -505,7 +517,7 @@ namespace Battle {
         stayPuts: new Array<Robot>()
       };
 
-      console.log(`Battle plan handing ${crossRef.length} robots and nodes. Time = ${Date.now() - timeAtStart}`);
+      // console.log(`Battle plan handing ${crossRef.length} robots and nodes. Time = ${Date.now() - timeAtStart}`);
       if(crossRef.length > 500) {
         crossRef = crossRef.slice(0, 500);
       }
@@ -517,7 +529,7 @@ namespace Battle {
           continue; 
         }
         if((e.proximity > 1) && (this.state.robots.length - totalAssignedRobots < 10)) {
-          console.log('Battle Plan leaving some non-fighting robots!');
+          // console.log('Battle Plan leaving some non-fighting robots!');
           break;
         }
         // Has too much time past?
@@ -526,18 +538,20 @@ namespace Battle {
           break;
         }
 
-        console.log(`Assigning attackers from (${e.friendlyPosition.position.x}, ${e.friendlyPosition.position.y}) to (${e.enemyPosition.position.x}, ${e.enemyPosition.position.y}). Proximity = ${e.proximity}`);
+        // console.log(`Assigning attackers from (${e.friendlyPosition.position.x}, ${e.friendlyPosition.position.y}) to (${e.enemyPosition.position.x}, ${e.enemyPosition.position.y}). Proximity = ${e.proximity}`);
 
         // How many are already attacking the enemy position
         const enemyCharges = e.enemyPosition.enemies.map(en => en.enemy.charges).reduce((l, r) => l+r, 0);
         let attackingCharges = e.enemyPosition.assignedRobots.map(ar => ar.robot.charges).reduce((l, r) => l+r, 0);
 
+        // console.log(`--- Enemy Charges for this position: (${enemyCharges})`);
+        let robotsAssignedThisRound = 0;
         for(let robot of e.friendlyPosition.robots) {
           if(robot.assignedAttack) {
-            console.log(`robot already assigned attack. Not reassigning`);
+            // console.log(`robot already assigned attack. Not reassigning`);
             continue;
           }
-          ++totalAssignedRobots;
+          ++robotsAssignedThisRound;
           robot.assignedAttack = e.enemyPosition;
           e.enemyPosition.assignedRobots.push(robot);
           attackingCharges += robot.robot.charges;
@@ -545,6 +559,8 @@ namespace Battle {
             break;
           }
         }
+        totalAssignedRobots += robotsAssignedThisRound;
+        // console.log(`--- After assigning robots, attacking charges equals ${attackingCharges}`);
         const enemyIsBeaten = attackingCharges > enemyCharges * 2;
         const allRobotsAssigned = e.friendlyPosition.robots.every(rn => !!rn.assignedAttack);
         if(enemyIsBeaten || allRobotsAssigned) {
@@ -554,8 +570,8 @@ namespace Battle {
               continue;
             }
             if(
-              (allRobotsAssigned && rn.friendlyPosition === e.friendlyPosition) 
-              || (enemyIsBeaten && rn.enemyPosition === e.enemyPosition)
+              (allRobotsAssigned && (rn.friendlyPosition === e.friendlyPosition)) 
+              || (enemyIsBeaten && (rn.enemyPosition === e.enemyPosition))
             ) {
               crossRef[j] = undefined;
             }
@@ -567,7 +583,7 @@ namespace Battle {
       //for(let n of occupiedPositions) {
       for(let i = 0; i < occupiedPositions.length; ++i) {
         const n = occupiedPositions[i];
-        console.log(`position (${n.position.x}, ${n.position.y}) we have ${n.assignedRobots.length} assigned robots`);
+        // console.log(`position (${n.position.x}, ${n.position.y}) we have ${n.assignedRobots.length} assigned robots`);
         let attackingRobots:Robot[] = [];
         const movingRobots:Robot[] = [];
         const hesitantRobots:Robot[] = [];
@@ -589,12 +605,12 @@ namespace Battle {
           .reduce((l,r) => l+r, 0) 
           + attackingRobots.map(r => r.charges).reduce((l, r) => l+r, 0);
         const totalDefence = n.enemies.map(r => r.enemy.charges).reduce((l, r) => l+r, 0);
-        console.log(`position (${n.position.x}, ${n.position.y}) There are ${n.enemies.length} enemy robots with a total defence of ${totalDefence}`);
+        // console.log(`position (${n.position.x}, ${n.position.y}) There are ${n.enemies.length} enemy robots with a total defence of ${totalDefence}`);
         if(totalAttack >= totalDefence*2) {
           attackingRobots = attackingRobots.concat(hesitantRobots);
         } else {
           if(hesitantRobots.length) {
-            console.log(`${hesitantRobots.length} robots looking at position (${n.position.x}, ${n.position.y}). Not moving in yet`);
+            // console.log(`${hesitantRobots.length} robots looking at position (${n.position.x}, ${n.position.y}). Not moving in yet`);
           }
           for(let h of hesitantRobots) {
             plan.moves.push({ robot: h, location: h});
@@ -629,7 +645,7 @@ namespace Battle {
 function play(state : GameState) {
   ++iteration;
   const millisecondsStart = Date.now();
-  console.log(`${iteration}: Starting iteration ${iteration}`);
+  // console.log(`${iteration}: Starting iteration ${iteration}`);
   
   let availableRobots:Robot[] = state.robots.filter(r => !!r);
   const countOfAllRobots = availableRobots.length;
@@ -662,8 +678,8 @@ function play(state : GameState) {
     a.robot.moveTo(a.location);
     availableRobots.splice(availableRobots.indexOf(a.robot), 1);
   }
-  console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${plan.attacks.length} attacks.`);
-  console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${plan.moves.length} robots to move towards enemies.`);
+  //console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${plan.attacks.length} attacks.`);
+  //console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${plan.moves.length} robots to move towards enemies.`);
 
 
   
@@ -690,7 +706,7 @@ function play(state : GameState) {
        availableRobots.splice(availableRobots.indexOf(r), 1);
        --availableMiners;
      } else {
-       console.log(`${iteration}: Not cloning robots as we have too many!`);
+       // console.log(`${iteration}: Not cloning robots as we have too many!`);
        break;
      }
    }
@@ -702,7 +718,7 @@ function play(state : GameState) {
   const explorerAndGuardLocations = locationProvider.getNext(availableExplorers)
     .concat(getGuardPositions(availableGuards));
    const assignmentCount = assignRobotsToLocations(availableRobots, explorerAndGuardLocations);
-   console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${assignmentCount} guardsAndLocations.`);
+   // console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${assignmentCount} guardsAndLocations.`);
    
 
 
@@ -726,7 +742,7 @@ function play(state : GameState) {
             return (++assignedMiners < allowableRovingMiners);
         }
     );
-    console.log(`${iteration}: [${Date.now()-millisecondsStart}] Assigned ${assignedRovingMiners} roving miners`);
+    // console.log(`${iteration}: [${Date.now()-millisecondsStart}] Assigned ${assignedRovingMiners} roving miners`);
 
 
 
@@ -755,7 +771,7 @@ function play(state : GameState) {
         }
         return true;
     });
-  console.log(`${iteration}: [${Date.now()-millisecondsStart}] Assigned ${assignedCloseMiners} close miners`);
+  // console.log(`${iteration}: [${Date.now()-millisecondsStart}] Assigned ${assignedCloseMiners} close miners`);
 
    // If there are any robots left (more miners than mines) send them exploring
    if(availableRobots.length) {
@@ -765,7 +781,7 @@ function play(state : GameState) {
       if(locationsToVisit.length) {
         const firstLocation = locationsToVisit[0];
         const assignmentCount = assignRobotsToLocations(availableRobots, locationsToVisit);   
-        console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${assignmentCount} additional explorers. First location is (${firstLocation.x}, ${firstLocation.y})`);  
+        // console.log(`${iteration}: [${Date.now()-millisecondsStart}] assigned ${assignmentCount} additional explorers. First location is (${firstLocation.x}, ${firstLocation.y})`);  
       } else {
         if(enemyFlag) {
           for(let r of availableRobots) {
@@ -775,13 +791,13 @@ function play(state : GameState) {
       }
 
      } else {
-       console.log(`${iteration}: ${timeSoFar} Not assigning explorers as there isn't enout time`);
+       // console.log(`${iteration}: ${timeSoFar} Not assigning explorers as there isn't enout time`);
      }
    }   
   
      const millisecondsEnd = Date.now();
 
-   console.log(`${iteration}: [${millisecondsEnd - millisecondsStart}] Returning from the method.`);
+   // console.log(`${iteration}: [${millisecondsEnd - millisecondsStart}] Returning from the method.`);
 }
 
 
