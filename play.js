@@ -265,7 +265,7 @@ var Battle;
             }
             let occupiedPositions = [];
             const isRedFlag = (p) => this.state.red.flag && (this.state.red.flag.x === p.x) && (this.state.red.flag.y === p.y);
-            let includesEnemyFlag = false;
+            let enemyFlagNode = undefined;
             for (let i = 0; i < sortedEnemy.length; ++i) {
                 const e = sortedEnemy[i];
                 const last = occupiedPositions.length ? occupiedPositions[occupiedPositions.length - 1] : undefined;
@@ -283,8 +283,8 @@ var Battle;
                         position: { x: e.x, y: e.y },
                         positionType: PositionType.Normal
                     };
-                    if (!includesEnemyFlag && isRedFlag(e)) {
-                        includesEnemyFlag = true;
+                    if (!enemyFlagNode && isRedFlag(e)) {
+                        enemyFlagNode = occupiedPositionNode;
                         occupiedPositionNode.positionType = PositionType.EnemyFlag;
                     }
                     const enemyNode = {
@@ -295,13 +295,14 @@ var Battle;
                     occupiedPositions.push(occupiedPositionNode);
                 }
             }
-            if (!includesEnemyFlag && this.state.red.flag) {
-                occupiedPositions.push({
+            if (!enemyFlagNode && this.state.red.flag) {
+                enemyFlagNode = {
                     assignedRobots: [],
                     enemies: [],
                     position: this.state.red.flag,
                     positionType: PositionType.EnemyFlag
-                });
+                };
+                occupiedPositions.push(enemyFlagNode);
             }
             const sortedRobots = this.state.robots.slice();
             sortedRobots.sort(comparePoints);
@@ -335,7 +336,7 @@ var Battle;
                 for (let ep of occupiedPositions) {
                     const p = proximity(fp.position, ep.position);
                     if (this.state.red.flag) {
-                        if ((ep.positionType === PositionType.Normal) && (p > 3)) {
+                        if ((ep.positionType === PositionType.Normal) && (p > 2)) {
                             continue;
                         }
                     }
@@ -368,11 +369,6 @@ var Battle;
                     return 0;
                 }
             });
-            const plan = {
-                moves: new Array(),
-                attacks: new Array(),
-                stayPuts: new Array()
-            };
             if (crossRef.length > 500) {
                 crossRef = crossRef.slice(0, 500);
             }
@@ -420,10 +416,31 @@ var Battle;
                     }
                 }
             }
+            if (enemyFlagNode && this.state.robots.length > 200) {
+                console.log("Rushing the flag!");
+                for (let fp of friendlyPositions) {
+                    for (let r of fp.robots) {
+                        if (!r.assignedAttack) {
+                            console.log(`Assigning robot at (${r.position.position.x}, ${r.position.position.y}))`);
+                            r.assignedAttack = enemyFlagNode;
+                            enemyFlagNode.assignedRobots.push(r);
+                        }
+                    }
+                }
+            }
+            const plan = {
+                moves: new Array(),
+                attacks: new Array(),
+                stayPuts: new Array()
+            };
             for (let i = 0; i < occupiedPositions.length; ++i) {
                 const n = occupiedPositions[i];
-                let attackingRobots = [];
-                const movingRobots = [];
+                const totalDefence = n.enemies.map(r => r.enemy.charges).reduce((l, r) => l + r, 0);
+                if (n.positionType == PositionType.EnemyFlag) {
+                    console.log(`position (${n.position.x}, ${n.position.y}) we have ${n.assignedRobots.length} assigned robots to attack ${n.enemies.length} enemy with a total defence of ${totalDefence}`);
+                }
+                const attackingRobots = [];
+                let movingRobots = [];
                 const hesitantRobots = [];
                 for (let r of n.assignedRobots) {
                     const p = proximity(r.robot, n.position);
@@ -441,15 +458,19 @@ var Battle;
                     .map(r => r.charges)
                     .reduce((l, r) => l + r, 0)
                     + attackingRobots.map(r => r.charges).reduce((l, r) => l + r, 0);
-                const totalDefence = n.enemies.map(r => r.enemy.charges).reduce((l, r) => l + r, 0);
+                if (n.positionType == PositionType.EnemyFlag) {
+                    console.log(`total attack of robots within proximity of 2 is ${totalAttack}`);
+                    console.log(`position (${n.position.x}, ${n.position.y}) There are ${n.enemies.length} enemy robots with a total defence of ${totalDefence}`);
+                }
                 if (totalAttack >= totalDefence * 2) {
-                    attackingRobots = attackingRobots.concat(hesitantRobots);
+                    movingRobots = movingRobots.concat(hesitantRobots);
                 }
                 else {
-                    if (hesitantRobots.length) {
+                    if (hesitantRobots.length && (n.positionType == PositionType.EnemyFlag)) {
+                        console.log(`${hesitantRobots.length} robots looking at position (${n.position.x}, ${n.position.y}). Not moving in yet`);
                     }
                     for (let h of hesitantRobots) {
-                        plan.moves.push({ robot: h, location: h });
+                        plan.stayPuts.push(h);
                     }
                 }
                 for (let r of movingRobots) {
@@ -510,6 +531,9 @@ function play(state) {
     for (let a of plan.moves) {
         a.robot.moveTo(a.location);
         availableRobots.splice(availableRobots.indexOf(a.robot), 1);
+    }
+    for (let a of plan.stayPuts) {
+        availableRobots.splice(availableRobots.indexOf(a), 1);
     }
     if (enemyFlag) {
         assignRobotsToLocations(availableRobots, [enemyFlag]);
