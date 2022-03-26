@@ -328,9 +328,9 @@ function assignRobotsToLocations<T extends Point>(
 
 namespace Battle {
 
-  enum PositionType { Normal, Flag}
+  enum PositionType { Normal, EnemyFlag}
 
-  interface EnemyPosition {
+  interface TargetPosition {
     position: Point;
     positionType: PositionType;
     enemies: EnemyNode[]
@@ -343,13 +343,13 @@ namespace Battle {
   }
 
   interface EnemyNode {
-    occupiedPosition: EnemyPosition;
+    occupiedPosition: TargetPosition;
     enemy: EnemyRobot;
   }
 
   interface RobotNode {
     position: FriendlyPosition;
-    assignedAttack?: EnemyPosition;
+    assignedAttack?: TargetPosition;
     robot: Robot;
   }
 
@@ -409,15 +409,16 @@ namespace Battle {
       }
 
       // Get a list of occupied positions
-      let occupiedPositions:EnemyPosition[] = [];
+      let occupiedPositions:TargetPosition[] = [];
       // console.log(`Consolidating ${sortedEnemy.length} enemy`);
 
       const isRedFlag = (p:Point) =>
         this.state.red.flag && (this.state.red.flag.x === p.x) && (this.state.red.flag.y === p.y);
 
+      let includesEnemyFlag = false;
       for(let i = 0; i < sortedEnemy.length; ++i) {
         const e = sortedEnemy[i];
-        const last:EnemyPosition = occupiedPositions.length ? occupiedPositions[occupiedPositions.length- 1] : undefined;
+        const last:TargetPosition = occupiedPositions.length ? occupiedPositions[occupiedPositions.length- 1] : undefined;
 
         if((last !== undefined) && (e.x == last.position.x) && (e.y == last.position.y)) {
           const enemyNode: EnemyNode = {
@@ -426,12 +427,16 @@ namespace Battle {
           };
           last.enemies.push(enemyNode);
         } else {
-          const occupiedPositionNode: EnemyPosition = {
+          const occupiedPositionNode: TargetPosition = {
             assignedRobots: [],
             enemies: [],
             position: {x: e.x, y: e.y},
-            positionType: isRedFlag(e) ? PositionType.Flag : PositionType.Normal // TODO: detect if it's the flag
+            positionType: PositionType.Normal
           };
+          if(!includesEnemyFlag && isRedFlag(e)) {
+            includesEnemyFlag = true;
+            occupiedPositionNode.positionType = PositionType.EnemyFlag;
+          }
           const enemyNode: EnemyNode = {
             enemy: e,
             occupiedPosition: occupiedPositionNode
@@ -439,6 +444,14 @@ namespace Battle {
           occupiedPositionNode.enemies.push(enemyNode);
           occupiedPositions.push(occupiedPositionNode);
         }
+      }
+      if(!includesEnemyFlag && this.state.red.flag) {
+        occupiedPositions.push({
+          assignedRobots: [],
+          enemies: [],
+          position: this.state.red.flag,
+          positionType: PositionType.EnemyFlag
+        });
       }
       // console.log(`*** There are ${occupiedPositions.length} unique enemy positions ***`);
 
@@ -471,7 +484,7 @@ namespace Battle {
       }
       // console.log(`*** We have ${sortedRobots.length} robots in ${friendlyPositions.length} positions ***`);
 
-      let crossRef:{ friendlyPosition: FriendlyPosition, enemyPosition: EnemyPosition, proximity: number }[] = [];
+      let crossRef:{ friendlyPosition: FriendlyPosition, enemyPosition: TargetPosition, proximity: number }[] = [];
       for(let fp of friendlyPositions) {
         for(let ep of occupiedPositions) {
           const p = proximity(fp.position, ep.position);
@@ -502,9 +515,9 @@ namespace Battle {
             return -1;
           } else if (l.proximity > r.proximity) {
             return 1;
-          } else if (l.enemyPosition.positionType === PositionType.Flag) {
-            return r.enemyPosition.positionType === PositionType.Flag ? 0 : -1;
-          } else if (r.enemyPosition.positionType === PositionType.Flag) {
+          } else if (l.enemyPosition.positionType === PositionType.EnemyFlag) {
+            return r.enemyPosition.positionType === PositionType.EnemyFlag ? 0 : -1;
+          } else if (r.enemyPosition.positionType === PositionType.EnemyFlag) {
             return 1;
           } else {
             return 0;
@@ -638,9 +651,6 @@ namespace Battle {
     } 
   }
 }
-
-
-
 
 function play(state : GameState) {
   ++iteration;

@@ -248,7 +248,7 @@ var Battle;
     let PositionType;
     (function (PositionType) {
         PositionType[PositionType["Normal"] = 0] = "Normal";
-        PositionType[PositionType["Flag"] = 1] = "Flag";
+        PositionType[PositionType["EnemyFlag"] = 1] = "EnemyFlag";
     })(PositionType || (PositionType = {}));
     class BattlePlanner {
         constructor(state) {
@@ -265,6 +265,7 @@ var Battle;
             }
             let occupiedPositions = [];
             const isRedFlag = (p) => this.state.red.flag && (this.state.red.flag.x === p.x) && (this.state.red.flag.y === p.y);
+            let includesEnemyFlag = false;
             for (let i = 0; i < sortedEnemy.length; ++i) {
                 const e = sortedEnemy[i];
                 const last = occupiedPositions.length ? occupiedPositions[occupiedPositions.length - 1] : undefined;
@@ -280,8 +281,12 @@ var Battle;
                         assignedRobots: [],
                         enemies: [],
                         position: { x: e.x, y: e.y },
-                        positionType: isRedFlag(e) ? PositionType.Flag : PositionType.Normal
+                        positionType: PositionType.Normal
                     };
+                    if (!includesEnemyFlag && isRedFlag(e)) {
+                        includesEnemyFlag = true;
+                        occupiedPositionNode.positionType = PositionType.EnemyFlag;
+                    }
                     const enemyNode = {
                         enemy: e,
                         occupiedPosition: occupiedPositionNode
@@ -289,6 +294,14 @@ var Battle;
                     occupiedPositionNode.enemies.push(enemyNode);
                     occupiedPositions.push(occupiedPositionNode);
                 }
+            }
+            if (!includesEnemyFlag && this.state.red.flag) {
+                occupiedPositions.push({
+                    assignedRobots: [],
+                    enemies: [],
+                    position: this.state.red.flag,
+                    positionType: PositionType.EnemyFlag
+                });
             }
             const sortedRobots = this.state.robots.slice();
             sortedRobots.sort(comparePoints);
@@ -345,10 +358,10 @@ var Battle;
                 else if (l.proximity > r.proximity) {
                     return 1;
                 }
-                else if (l.enemyPosition.positionType === PositionType.Flag) {
-                    return r.enemyPosition.positionType === PositionType.Flag ? 0 : -1;
+                else if (l.enemyPosition.positionType === PositionType.EnemyFlag) {
+                    return r.enemyPosition.positionType === PositionType.EnemyFlag ? 0 : -1;
                 }
-                else if (r.enemyPosition.positionType === PositionType.Flag) {
+                else if (r.enemyPosition.positionType === PositionType.EnemyFlag) {
                     return 1;
                 }
                 else {
